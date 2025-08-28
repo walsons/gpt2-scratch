@@ -102,13 +102,12 @@ public:
 
 private:
     size_t numel(const std::vector<Dim> &dims) const ;
-    // void transpose_dfs(Dim d1, Dim d2, std::vector<Dim> &index);
     void transpose_dfs(Dim d1, Dim d2, std::vector<Dim> &index, std::vector<Dim> &each_dim_size, std::vector<Dim> &swap_each_dim_size);
     std::string tensor_data_string() const;
 
 public:
     DataType dtype() const { return m_dtype; }
-    std::vector<Dim> dims() const { return m_dims; }
+    const std::vector<Dim> &dims() const { return m_dims; }
     size_t numel() const  { return m_data == nullptr ? 0 : numel(m_dims); }
     DType value() const;
 
@@ -116,138 +115,15 @@ public:
     const Tensor& operator[](Dim index) const;
 
     Tensor& transpose(Dim d1, Dim d2);
-
-    Tensor& resize(std::vector<Dim> new_dims)
-    {
-        if (!m_data_owner)
-            throw std::runtime_error("Cannot resize tensor without ownership");
-
-        DType* new_data = new DType[numel(new_dims)];
-        std::memcpy(new_data, m_data, std::min(numel(new_dims), numel()) * sizeof(DType));
-        if (m_data)
-            delete[] static_cast<DType*>(m_data);
-        m_data = new_data;
-        m_dims = std::move(new_dims);
-        return *this;
-    }
-
-    Tensor& view(std::vector<Dim> new_dims) 
-    {
-        if (numel(new_dims) != numel(m_dims))
-            throw std::runtime_error("Cannot view tensor with different number of elements");
-
-        if (!m_data_owner)
-            throw std::runtime_error("Cannot view tensor without ownership");
-
-        m_dims = std::move(new_dims);
-        return *this;
-    }
+    Tensor& resize(std::vector<Dim> new_dims);
+    Tensor& view(std::vector<Dim> new_dims);
 
     // Softmax operation along the last dimension
-    Tensor& softmax()
-    {
-        if (m_dims.empty())
-            return *this;
-
-        if (m_dims.size() == 1)
-        {
-            DType max_val = *std::max_element(m_data, m_data + m_dims[0]);
-            std::for_each(m_data, m_data + m_dims[0], [&](DType &val) {
-                if (std::isnan(val) || std::isinf(val)) 
-                    val = 0; // Handle NaN and Inf values: -std::numeric_limits<DType>::infinity()
-                else
-                    val = std::exp(val - max_val);
-            });
-            DType sum = std::accumulate(m_data, m_data + m_dims[0], static_cast<DType>(0));
-            if (std::isnan(sum) || std::isinf(sum) || sum == 0)
-                std::cout << "Warning: Softmax sum is NaN, Inf or zero" << std::endl;
-            std::for_each(m_data, m_data + m_dims[0], [sum](DType &val) {
-                val /= sum;
-            });
-        }
-        
-        for (Dim i = 0; i < m_dims[0]; ++i) 
-        {
-            (*this)[i].softmax();
-        }
-        return *this;
-    }
-
+    Tensor& softmax();
     // current only support last dimension
-    Tensor& mean(bool keep_dim = false)
-    {
-        if (m_dims.empty())
-            return *this;
-
-        std::vector<Dim> new_dims = m_dims;
-        new_dims.erase(new_dims.end() - 1);
-        Tensor<DType> result(new_dims);
-
-        for (size_t i = 0; i < result.numel(); ++i) 
-        {
-            result.m_data[i] = 0;
-            for (size_t j = i * m_dims.back(); j < (i + 1)* m_dims.back(); ++j) 
-            {
-                result.m_data[i] += m_data[j];
-            }
-        }
-
-        for (size_t i = 0; i < result.numel(); ++i) 
-        {
-            result.m_data[i] /= m_dims.back();
-        }
-
-        if (keep_dim) 
-        {
-            result.m_dims.insert(result.m_dims.end(), 1);
-        }
-
-        *this = std::move(result);
-        return *this;
-    }
-
+    Tensor& mean(bool keep_dim = false);
     // current only support last dimension
-    Tensor& var(bool keep_dim = false, bool unbiased = true)
-    {
-        if (m_dims.empty())
-            return *this;
-
-        std::vector<Dim> new_dims = m_dims;
-        new_dims.erase(new_dims.end() - 1);
-        Tensor<DType> result(new_dims);
-
-        for (size_t i = 0; i < result.numel(); ++i) 
-        {
-            DType mean_val = 0;
-            for (size_t j = i * m_dims.back(); j < (i + 1) * m_dims.back(); ++j) 
-            {
-                mean_val += m_data[j];
-            }
-            mean_val /= m_dims.back();
-
-            result.m_data[i] = 0;
-            for (size_t j = i * m_dims.back(); j < (i + 1) * m_dims.back(); ++j) 
-            {
-                result.m_data[i] += (m_data[j] - mean_val) * (m_data[j] - mean_val);
-            }
-            if (unbiased && m_dims.back() > 1) 
-            {
-                result.m_data[i] /= (m_dims.back() - 1);
-            } 
-            else 
-            {
-                result.m_data[i] /= m_dims.back();
-            }
-        }
-
-        if (keep_dim) 
-        {
-            result.m_dims.insert(result.m_dims.end(), 1);
-        }
-
-        *this = std::move(result);
-        return *this;
-    }
+    Tensor& var(bool keep_dim = false, bool unbiased = true);
 
 private:
     DataType m_dtype = dtype_enum_value<DType>::v; // Data type of the tensor
@@ -546,6 +422,140 @@ Tensor<DType>& Tensor<DType>::transpose(Dim d1, Dim d2)
 }
 
 template <typename DType>
+Tensor<DType>& Tensor<DType>::resize(std::vector<Dim> new_dims)
+{
+    if (!m_data_owner)
+        throw std::runtime_error("Cannot resize tensor without ownership");
+
+    DType* new_data = new DType[numel(new_dims)];
+    std::memcpy(new_data, m_data, std::min(numel(new_dims), numel()) * sizeof(DType));
+    if (m_data)
+        delete[] static_cast<DType*>(m_data);
+    m_data = new_data;
+    m_dims = std::move(new_dims);
+    return *this;
+}
+
+template <typename DType>
+Tensor<DType>& Tensor<DType>::view(std::vector<Dim> new_dims) 
+{
+    if (numel(new_dims) != numel(m_dims))
+        throw std::runtime_error("Cannot view tensor with different number of elements");
+
+    if (!m_data_owner)
+        throw std::runtime_error("Cannot view tensor without ownership");
+
+    m_dims = std::move(new_dims);
+    return *this;
+}
+
+template <typename DType>
+Tensor<DType>& Tensor<DType>::softmax()
+{
+    if (m_dims.empty())
+        return *this;
+
+    if (m_dims.size() == 1)
+    {
+        DType max_val = *std::max_element(m_data, m_data + m_dims[0]);
+        std::for_each(m_data, m_data + m_dims[0], [&](DType &val) {
+            if (std::isnan(val) || std::isinf(val)) 
+                val = 0; // Handle NaN and Inf values: -std::numeric_limits<DType>::infinity()
+            else
+                val = std::exp(val - max_val);
+        });
+        DType sum = std::accumulate(m_data, m_data + m_dims[0], static_cast<DType>(0));
+        if (std::isnan(sum) || std::isinf(sum) || sum == 0)
+            std::cout << "Warning: Softmax sum is NaN, Inf or zero" << std::endl;
+        std::for_each(m_data, m_data + m_dims[0], [sum](DType &val) {
+            val /= sum;
+        });
+    }
+    
+    for (Dim i = 0; i < m_dims[0]; ++i) 
+    {
+        (*this)[i].softmax();
+    }
+    return *this;
+}
+
+template <typename DType>
+Tensor<DType>& Tensor<DType>::mean(bool keep_dim)
+{
+    if (m_dims.empty())
+        return *this;
+
+    std::vector<Dim> new_dims = m_dims;
+    new_dims.erase(new_dims.end() - 1);
+    Tensor<DType> result(new_dims);
+
+    for (size_t i = 0; i < result.numel(); ++i) 
+    {
+        result.m_data[i] = 0;
+        for (size_t j = i * m_dims.back(); j < (i + 1)* m_dims.back(); ++j) 
+        {
+            result.m_data[i] += m_data[j];
+        }
+    }
+
+    for (size_t i = 0; i < result.numel(); ++i) 
+    {
+        result.m_data[i] /= m_dims.back();
+    }
+
+    if (keep_dim) 
+    {
+        result.m_dims.insert(result.m_dims.end(), 1);
+    }
+
+    *this = std::move(result);
+    return *this;
+}
+
+template <typename DType>
+Tensor<DType>& Tensor<DType>::var(bool keep_dim, bool unbiased)
+{
+    if (m_dims.empty())
+        return *this;
+
+    std::vector<Dim> new_dims = m_dims;
+    new_dims.erase(new_dims.end() - 1);
+    Tensor<DType> result(new_dims);
+
+    for (size_t i = 0; i < result.numel(); ++i) 
+    {
+        DType mean_val = 0;
+        for (size_t j = i * m_dims.back(); j < (i + 1) * m_dims.back(); ++j) 
+        {
+            mean_val += m_data[j];
+        }
+        mean_val /= m_dims.back();
+
+        result.m_data[i] = 0;
+        for (size_t j = i * m_dims.back(); j < (i + 1) * m_dims.back(); ++j) 
+        {
+            result.m_data[i] += (m_data[j] - mean_val) * (m_data[j] - mean_val);
+        }
+        if (unbiased && m_dims.back() > 1) 
+        {
+            result.m_data[i] /= (m_dims.back() - 1);
+        } 
+        else 
+        {
+            result.m_data[i] /= m_dims.back();
+        }
+    }
+
+    if (keep_dim) 
+    {
+        result.m_dims.insert(result.m_dims.end(), 1);
+    }
+
+    *this = std::move(result);
+    return *this;
+}
+
+template <typename DType>
 std::ostream& operator<<(std::ostream& os, const Tensor<DType> &tensor) 
 {
     os << "Tensor(";
@@ -582,7 +592,8 @@ Tensor<DType> MatMul1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &o
     Tensor<DType> result;
     result.resize(std::vector<typename Tensor<DType>::Dim>{1});
     DType num = 0;
-    for (typename Tensor<DType>::Dim i = 0; i < tensor.m_dims[0]; ++i) {
+    for (typename Tensor<DType>::Dim i = 0; i < tensor.m_dims[0]; ++i) 
+    {
         num += static_cast<DType*>(tensor.m_data)[i] * static_cast<DType*>(other.m_data)[i];
     }
     static_cast<DType*>(result.m_data)[0] = num;
@@ -590,7 +601,8 @@ Tensor<DType> MatMul1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &o
 }
 
 template <typename DType>
-Tensor<DType> MatMulMatrix(const Tensor<DType> &tensor, const Tensor<DType> &other) {
+Tensor<DType> MatMulMatrix(const Tensor<DType> &tensor, const Tensor<DType> &other) 
+{
     assert(tensor.m_dims.size() == 2 && other.m_dims.size() == 2);
     assert(tensor.m_dims[1] == other.m_dims[0]);
     Tensor<DType> result;

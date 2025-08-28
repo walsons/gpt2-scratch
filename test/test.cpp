@@ -1,5 +1,6 @@
 #include "../src/types.h"
 #include <iostream>
+#include <chrono>
 
 
 int main() 
@@ -152,7 +153,12 @@ int main()
     gpt.m_out_head.weight = *static_cast<Tensor<Float32>*>(params["out_head.weight"].tensor);
 
     TokenIndex input_data[] = {1, 2, 3, 4};
-    std::cout << gpt(Tensor<TokenIndex>({1, 4}, input_data)) << std::endl;
+    auto t0 = std::chrono::steady_clock::now();
+    auto output = gpt(Tensor<TokenIndex>({1, 4}, input_data));
+    auto t1 = std::chrono::steady_clock::now();
+    std::chrono::duration<double, std::milli> ms = t1 - t0;
+    std::cout << output << std::endl;
+    std::cout << "elapsed = " << ms.count() << " ms\n";
     /*
     tensor([[[-32.9010, -31.2024, -34.6622,  ..., -39.4867, -39.8731, -32.2387],
          [-55.5208, -53.4285, -56.4767,  ..., -68.1539, -66.7709, -58.6006],
