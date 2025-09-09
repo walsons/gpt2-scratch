@@ -42,11 +42,11 @@ int main()
 
     auto next_token_id = [&](std::vector<TokenIndex> token_ids) -> TokenIndex {
         auto output = gpt(Tensor<TokenIndex>({1, static_cast<typename Tensor<TokenIndex>::Dim>(token_ids.size())}, token_ids.data()));
-        auto &final_output = output[0][output.dims()[1] - 1];
+        auto final_output = output.map(0).map(output.dims()[1] - 1);
         size_t max_index = 0;
         for (size_t i = 1; i < final_output.numel(); ++i)
         {
-            max_index = final_output[max_index].value() > final_output[i].value() ? max_index : i;
+            max_index = final_output.value(max_index) > final_output.value(i) ? max_index : i;
         }
         return max_index;
     };
@@ -55,7 +55,7 @@ int main()
     while (true)
     {
         auto nt = next_token_id(token_ids);
-        if (nt == tokenizer.token_to_id("<|endoftext|>") or token_ids.size() > 50)
+        if (nt == tokenizer.token_to_id("<|endoftext|>") || token_ids.size() > 50)
             break;
         token_ids.push_back(nt);
         std::cout << tokenizer.decode({nt}) << std::flush;
