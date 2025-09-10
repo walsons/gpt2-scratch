@@ -15,12 +15,14 @@
 #include <cmath>
 #include <cassert>
 
+
 enum class DataType 
 {
     FLOAT_32 = 1,
     FLOAT_64,
     INT_32,
 };
+
 
 using Float32 = float;
 using Float64 = double;
@@ -72,7 +74,7 @@ private:
 public:
     DataType dtype() const { return dtype_; }
     const std::vector<Dim> &dims() const { return dims_; }
-    Dim dims(long long i) const { return dims_.at(i < 0 ? i + dims_.size() : i); }
+    Dim dims(long long i) const { return dims_[i < 0 ? i + dims_.size() : i]; }
     const DType* data() const { return data_; }
     DType* data() { return data_; }
     size_t numel() const;
@@ -260,7 +262,7 @@ Tensor<DType> TensorBase<DType>::transpose(Dim d1, Dim d2) const
         }
     };
 
-    std::vector<Dim> index{};
+    std::vector<Dim> index;
     transpose_recurse(index);
     return result;
 }
@@ -304,7 +306,7 @@ Tensor<DType> TensorBase<DType>::mean(bool keep_dim) const
         TensorMap<DType> slice(std::vector<Dim>{dims_.back()}, data_ + offset);
         DType sum = std::accumulate(slice.data(), slice.data() + dims_.back(), static_cast<DType>(0));
         if (std::isnan(sum) || std::isinf(sum) || sum == 0)
-            std::cout << "!!!! Warning: Mean sum is NaN, Inf or zero" << std::endl;
+            throw std::runtime_error("Mean sum is NaN, Inf or zero");
         DType mean_val = sum / dims_.back();
         result.data_[offset / dims_.back()] = mean_val;
         offset += dims_.back();
@@ -330,7 +332,7 @@ Tensor<DType> TensorBase<DType>::var(bool keep_dim, bool unbiased) const
         TensorMap<DType> slice(std::vector<Dim>{dims_.back()}, data_ + offset);
         DType sum = std::accumulate(slice.data(), slice.data() + dims_.back(), static_cast<DType>(0));
         if (std::isnan(sum) || std::isinf(sum) || sum == 0)
-            std::cout << "!!!! Warning: Variance sum is NaN, Inf or zero" << std::endl;
+            throw std::runtime_error("Variance mean sum is NaN, Inf or zero");
         DType mean_val = sum / dims_.back();
         DType var_sum = 0;
         for (Dim i = 0; i < slice.dims().back(); ++i) 
@@ -390,7 +392,7 @@ public:
     Tensor(const TensorBase<DType> &tensorbase) : TensorBase<DType>()
     {
         this->dims_ = tensorbase.dims_;
-        this->data_ = new DType[this->numel()];
+        this->data_ = new DType[this->numel()]{};
         std::memcpy(this->data_, tensorbase.data_, this->numel() * sizeof(DType));
     }
 
@@ -398,50 +400,11 @@ public:
     Tensor& view(std::vector<Dim> new_dims);
 };
 
-
-/********** class TensorMap **********/
-template <typename DType>
-class TensorMap : public TensorBase<DType>
-{
-public:
-    using Dim = typename TensorBase<DType>::Dim;
-
-    TensorMap(const TensorBase<DType> &tensor) : TensorBase<DType>()
-    {
-        this->dims_ = tensor.dims_;
-        this->data_ = tensor.data_;
-    }
-
-    TensorMap(const Tensor<DType> &tensor) : TensorBase<DType>()
-    {
-        this->dims_ = tensor.dims_;
-        this->data_ = tensor.data_;
-    }
-    TensorMap(std::vector<Dim> dims, DType *data) : TensorBase<DType>()
-    {
-        this->dims_ = dims;
-        this->data_ = data;
-
-        // Check dimensions
-        if (this->dims_.empty()) 
-            throw std::runtime_error("Dimension size must be greater than 0");
-        std::for_each(this->dims_.begin(), this->dims_.end(), [](Dim dim) { if (dim <= 0) throw std::runtime_error("Dimension element must be greater than 0"); });
-    }
-    TensorMap(const TensorMap &other) = default;
-    TensorMap& operator=(const TensorMap &other) = default;
-    TensorMap(TensorMap &&other) noexcept = default;
-    TensorMap& operator=(TensorMap &&other) noexcept = default;
-    ~TensorMap() = default; 
-
-    operator const Tensor<DType>() const { return Tensor<DType>(this->dims_, this->data_); }
-    operator Tensor<DType>() { return Tensor<DType>(this->dims_, this->data_); }
-};
-
 template <typename DType>
 Tensor<DType>::Tensor() : TensorBase<DType>() 
 {
     this->dims_ = {1};
-    this->data_ = new DType[1];
+    this->data_ = new DType[1]{};
 }
 
 template <typename DType>
@@ -450,7 +413,7 @@ Tensor<DType>::Tensor(const std::initializer_list<U> &data)
     : TensorBase<DType>()
 {
     this->dims_ = {data.size()};
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
     std::copy(data.begin(), data.end(), this->data_);
 }
 
@@ -460,7 +423,7 @@ Tensor<DType>::Tensor(const std::initializer_list<std::initializer_list<U>> &dat
     : TensorBase<DType>()
 {
     this->dims_ = {data.size(), data.begin()->size()};
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
 
     size_t offset = 0;
     for (const auto& row : data) 
@@ -478,7 +441,7 @@ Tensor<DType>::Tensor(const std::initializer_list<std::initializer_list<std::ini
     : TensorBase<DType>()
 {
     this->dims_ = {data.size(), data.begin()->size(), data.begin()->begin()->size()};
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
 
     size_t offset = 0;
     for (const auto& matrix : data) 
@@ -501,7 +464,7 @@ Tensor<DType>::Tensor(const std::initializer_list<std::initializer_list<std::ini
     : TensorBase<DType>()
 {
     this->dims_ = {data.size(), data.begin()->size(), data.begin()->begin()->size(), data.begin()->begin()->begin()->size()};
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
 
     size_t offset = 0;
     for (const auto& tensor : data) 
@@ -529,7 +492,7 @@ Tensor<DType>::Tensor(Args&&... args)
     : TensorBase<DType>()
 {
     this->dims_ = {static_cast<Dim>(args)...};
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
 
     // Check dimensions
     std::for_each(this->dims_.begin(), this->dims_.end(), [](Dim dim) { if (dim <= 0) throw std::runtime_error("Dimension element must be greater than 0"); });
@@ -540,7 +503,7 @@ Tensor<DType>::Tensor(std::vector<Dim> dims)
     : TensorBase<DType>()
 {
     this->dims_ = std::move(dims);
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
 
     // Check dimensions
     if (this->dims_.empty()) 
@@ -553,7 +516,7 @@ Tensor<DType>::Tensor(std::vector<Dim> dims, const DType* data)
     : TensorBase<DType>()
 {
     this->dims_ = std::move(dims);
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
 
     // Check dimensions
     if (this->dims_.empty()) 
@@ -568,7 +531,7 @@ Tensor<DType>::Tensor(const Tensor &other)
     : TensorBase<DType>(other)
 {
     this->dims_ = other.dims_;
-    this->data_ = new DType[this->numel()];
+    this->data_ = new DType[this->numel()]{};
     std::memcpy(this->data_, other.data_, this->numel() * sizeof(DType));
 }
 
@@ -586,7 +549,7 @@ Tensor<DType>& Tensor<DType>::operator=(const Tensor &other)
 
         delete[] static_cast<DType*>(this->data_);
         this->dims_ = other.dims_;
-        this->data_ = new DType[this->numel()];
+        this->data_ = new DType[this->numel()]{};
         std::memcpy(this->data_, other.data_, this->numel() * sizeof(DType));
     }
     return *this;
@@ -618,6 +581,7 @@ template <typename DType>
 Tensor<DType>::~Tensor() 
 {
     delete[] static_cast<DType*>(this->data_);
+    this->data_ = nullptr;
 }
 
 template <typename DType>
@@ -637,25 +601,55 @@ Tensor<DType>& Tensor<DType>::view(std::vector<Dim> new_dims)
 }
 
 
+/********** class TensorMap **********/
+template <typename DType>
+class TensorMap : public TensorBase<DType>
+{
+public:
+    using Dim = typename TensorBase<DType>::Dim;
 
-// template <typename DType>
-// TensorMap<DType> TensorBase<DType>::operator[](Dim index)
-// {
-//     if (this->dims_.size() < 2)
-//         throw std::runtime_error("1D Tensor doesn't support operator[]");
+    TensorMap(const TensorBase<DType> &tensor);
+    TensorMap(const Tensor<DType> &tensor);
+    TensorMap(std::vector<Dim> dims, DType *data);
 
-//     return TensorMap<DType>(std::vector<Dim>(this->dims_.begin() + 1, this->dims_.end()), this->data_ + index * this->numel() / this->dims_[0]);
-// }
+    TensorMap(const TensorMap &other) = default;
+    TensorMap& operator=(const TensorMap &other) = default;
+    TensorMap(TensorMap &&other) noexcept = default;
+    TensorMap& operator=(TensorMap &&other) noexcept = default;
+    ~TensorMap() = default; 
 
-// template <typename DType>
-// const TensorMap<DType> TensorBase<DType>::operator[](Dim index) const
-// {
-//     if (this->dims_.size() < 2)
-//         throw std::runtime_error("1D Tensor doesn't support operator[]");
+    operator const Tensor<DType>() const { return Tensor<DType>(this->dims_, this->data_); }
+    operator Tensor<DType>() { return Tensor<DType>(this->dims_, this->data_); }
+};
 
-//     return TensorMap<DType>(std::vector<Dim>(this->dims_.begin() + 1, this->dims_.end()), this->data_ + index * this->numel() / this->dims_[0]);
-// }
+template <typename DType>
+TensorMap<DType>::TensorMap(const TensorBase<DType> &tensor) : TensorBase<DType>()
+{
+    this->dims_ = tensor.dims_;
+    this->data_ = tensor.data_;
+}
 
+template <typename DType>
+TensorMap<DType>::TensorMap(const Tensor<DType> &tensor) : TensorBase<DType>()
+{
+    this->dims_ = tensor.dims_;
+    this->data_ = tensor.data_;
+}
+
+template <typename DType>
+TensorMap<DType>::TensorMap(std::vector<Dim> dims, DType *data) : TensorBase<DType>()
+{
+    this->dims_ = dims;
+    this->data_ = data;
+
+    // Check dimensions
+    if (this->dims_.empty()) 
+        throw std::runtime_error("Dimension size must be greater than 0");
+    std::for_each(this->dims_.begin(), this->dims_.end(), [](Dim dim) { if (dim <= 0) throw std::runtime_error("Dimension element must be greater than 0"); });
+}
+
+
+/********** Global functions **********/
 template <typename DType>
 std::ostream& operator<<(std::ostream& os, const TensorBase<DType> &tensor) 
 {
@@ -688,115 +682,20 @@ std::ostream& operator<<(std::ostream& os, const TensorBase<DType> &tensor)
     return os;
 }
 
-// template <typename DType>
-// Tensor<DType> MatMul1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == 1 && other.dims().size() == 1);
-//     assert(tensor.dims()[0] == other.dims()[0]);
-//     Tensor<DType> result;
-//     result.resize(std::vector<typename Tensor<DType>::Dim>{1});
-//     DType num = 0;
-//     for (typename Tensor<DType>::Dim i = 0; i < tensor.dims()[0]; ++i) 
-//     {
-//         num += static_cast<DType*>(tensor.data())[i] * static_cast<DType*>(other.data())[i];
-//     }
-//     static_cast<DType*>(result.data())[0] = num;
-//     return result[0];  // remove the extra dimension
-// }
-
-// template <typename DType>
-// Tensor<DType> MatMulMatrix(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == 2 && other.dims().size() == 2);
-//     assert(tensor.dims()[1] == other.dims()[0]);
-//     Tensor<DType> result;
-//     result.resize(std::vector<typename Tensor<DType>::Dim>{tensor.dims()[0], other.dims()[1]});
-//     Tensor<DType> transposed_other = other;
-//     transposed_other.transpose(0, 1); // Transpose the second tensor for easier multiplication
-//     for (typename Tensor<DType>::Dim i = 0; i < result.dims()[0]; ++i) 
-//     {
-//         for (typename Tensor<DType>::Dim j = 0; j < result.dims()[1]; ++j) 
-//         {
-//             Tensor num = MatMul1DTensor(tensor[i], transposed_other[j]);
-//             result[i][j] = std::move(num);
-//         }
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> MatMulDFS(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == other.dims().size() && tensor.dims().size() >= 2);
-//     if (tensor.dims().size() == 2)
-//         return MatMulMatrix(tensor, other);
-
-//     Tensor<DType> result;
-//     auto dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     for (typename Tensor<DType>::Dim i = 0; i < dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         auto sub_result = MatMulDFS(tensor[tensor_index], other[other_index]);
-//         if (i == 0) 
-//         {
-//             auto result_dims = sub_result.dims();
-//             result_dims.insert(result_dims.begin(), std::max(tensor.dims()[0], other.dims()[0]));
-//             result.resize(result_dims);
-//         }
-//         result[i] = std::move(sub_result);
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> MatMul(Tensor<DType> tensor, Tensor<DType> other) 
-// {
-//     if (tensor.dims().size() < 2 || other.dims().size() < 2) 
-//     {
-//         // support 1D tensor in the future
-//         throw std::runtime_error("Both tensors must have at least 2 dimensions for matrix multiplication");
-//     }
-
-//     if (tensor.dims()[tensor.dims().size() - 1] != other.dims()[other.dims().size() - 2])
-//         throw std::runtime_error("The last dimension of the first tensor must match the second to last dimension of the second tensor");
-
-//     // broadcast the tensors
-//     if (tensor.dims().size() > other.dims().size()) 
-//     {
-//         auto append = decltype(tensor.dims())(tensor.dims().size() - other.dims().size(), 1);
-//         other.dims().insert(other.dims().begin(), append.begin(), append.end());
-//     }
-//     else if (tensor.dims().size() < other.dims().size()) 
-//     {
-//         auto append = decltype(other.dims())(other.dims().size() - tensor.dims().size(), 1);
-//         tensor.dims().insert(tensor.dims().begin(), append.begin(), append.end());
-//     }
-//     for (size_t i = 0; i < tensor.dims().size() - 2; ++i) 
-//     {
-//         if (tensor.dims()[i] != other.dims()[i]) 
-//         {
-//             if (tensor.dims()[i] != 1 && other.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-//     return MatMulDFS(tensor, other);
-// }
-
-template <typename DType>
-DType LinearMatMul1D(const TensorBase<DType> &tensor, const TensorBase<DType> &other)
+namespace
 {
-    assert(tensor.dims().size() == 1 && other.dims().size() == 1);
-    assert(tensor.dims(0) == other.dims(0));
-    DType result = 0;
-    for (typename TensorBase<DType>::Dim i = 0; i < tensor.dims()[0]; ++i) 
+    template <typename DType>
+    DType LinearMatMul1D(const TensorBase<DType> &tensor, const TensorBase<DType> &other)
     {
-        result += tensor.data()[i] * other.data()[i];
+        assert(tensor.dims().size() == 1 && other.dims().size() == 1);
+        assert(tensor.dims(0) == other.dims(0));
+        DType result = 0;
+        for (typename TensorBase<DType>::Dim i = 0; i < tensor.dims()[0]; ++i) 
+        {
+            result += tensor.data()[i] * other.data()[i];
+        }
+        return result;
     }
-    return result;
 }
 
 template <typename DType>
@@ -812,6 +711,8 @@ Tensor<DType> LinearMatMul(const TensorBase<DType> &tensor, const TensorBase<DTy
     {
         tm1.broadcast(tm2.dims().size() - tm1.dims().size());
     }
+
+    std::vector<typename TensorMap<DType>::Dim> result_dims;
     for (size_t i = 0; i < tm1.dims().size() - 2; ++i) 
     {
         if (tm1.dims()[i] != tm2.dims()[i]) 
@@ -819,50 +720,44 @@ Tensor<DType> LinearMatMul(const TensorBase<DType> &tensor, const TensorBase<DTy
             if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
         }
+        result_dims.push_back(std::max(tm1.dims()[i], tm2.dims()[i]));
     }
+    result_dims.push_back(tm1.dims(-2));
+    result_dims.push_back(tm2.dims(-2));
 
-    assert(tm1.dims().size() > 1 && tm2.dims().size() > 1);
-    assert(tm1.dims().back() == tm2.dims().back());
+    if (tm1.dims(-1) != tm2.dims(-1))
+        throw std::runtime_error("The last dimension of the two tensors must match for linear matrix multiplication");
 
-    auto matrix1_size = tm1.dims()[tm1.dims().size() - 2] * tm1.dims()[tm1.dims().size() - 1];
-    auto matrix2_size = tm2.dims()[tm2.dims().size() - 2] * tm2.dims()[tm2.dims().size() - 1];
-
-    size_t tm1_matrix_num = tm1.numel() / matrix1_size;
-    size_t tm2_matrix_num = tm2.numel() / matrix2_size;
-
-    size_t max_matrix_num = std::max(tm1_matrix_num, tm2_matrix_num);
-    size_t min_matrix_num = std::min(tm1_matrix_num, tm2_matrix_num);
-
-    auto result_size = tensor.dims();
-    result_size.back() = other.dims()[other.dims().size() - 2];
-    Tensor<DType> result(result_size);
-    auto result_matrix_size = result.dims()[result.dims().size() - 2] * result.dims()[result.dims().size() - 1];
-    size_t result_matrix_num = result.numel() / result_matrix_size;
-
-    size_t outer_offset = 0;
-    while (outer_offset < max_matrix_num)
-    {
-        size_t inner_offset = 0;
-        while (inner_offset < min_matrix_num)
+    std::function<void(const TensorMap<DType>&, const TensorMap<DType>&, TensorMap<DType>&)> matmul_recurse = [&matmul_recurse](const TensorMap<DType> &a, const TensorMap<DType> &b, TensorMap<DType> &r) {
+        if (a.dims().size() == 2) 
         {
-            // process the matrix multiplication
-            TensorMap<DType> mat1({tm1.dims()[tm1.dims().size() - 2], tm1.dims()[tm1.dims().size() - 1]}, tm1.data() + (outer_offset % tm1_matrix_num + inner_offset) * matrix1_size);
-            TensorMap<DType> mat2({tm2.dims()[tm2.dims().size() - 2], tm2.dims()[tm2.dims().size() - 1]}, tm2.data() + (outer_offset % tm2_matrix_num + inner_offset) * matrix2_size);
-            TensorMap<DType> res({result.dims()[result.dims().size() - 2], result.dims()[result.dims().size() - 1]}, result.data() + (outer_offset % result_matrix_num + inner_offset) * result_matrix_size);
-            for (typename Tensor<DType>::Dim i = 0; i < res.dims()[0]; ++i) 
+            for (typename Tensor<DType>::Dim i = 0; i < r.dims()[0]; ++i) 
             {
-                TensorMap<DType> row = mat1.map(i);
-                for (typename Tensor<DType>::Dim j = 0; j < res.dims()[1]; ++j) 
+                TensorMap<DType> row = a.map(i);
+                for (typename Tensor<DType>::Dim j = 0; j < r.dims()[1]; ++j) 
                 {
-                    TensorMap<DType> col = mat2.map(j);
-                    res.data()[i * res.dims()[1] + j] = LinearMatMul1D(row, col);
+                    TensorMap<DType> col = b.map(j);
+                    r.data()[i * r.dims()[1] + j] = LinearMatMul1D(row, col);
                 }
             }
-
-            ++inner_offset;
+        } 
+        else 
+        {
+            for (typename Tensor<DType>::Dim i = 0; i < r.dims()[0]; ++i) 
+            {
+                typename Tensor<DType>::Dim a_index = (a.dims()[0] == 1) ? 0 : i;
+                typename Tensor<DType>::Dim b_index = (b.dims()[0] == 1) ? 0 : i;
+                auto am = a.map(a_index);
+                auto bm = b.map(b_index);
+                auto rm = r.map(i);
+                matmul_recurse(am, bm, rm);
+            }
         }
-        outer_offset += inner_offset;
-    }
+    };
+
+    Tensor<DType> result(result_dims);
+    TensorMap<DType> result_map = result;
+    matmul_recurse(tm1, tm2, result_map);
     return result;
 }
 
@@ -880,76 +775,73 @@ Tensor<DType> MatMul(const TensorBase<DType> &tensor, const TensorBase<DType> &o
         else
             throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
     }
-    
-    assert(tensor.dims().size() >= 2 && other.dims().size() >= 2);
 
-    if (tensor.dims()[tensor.dims().size() - 1] != other.dims()[other.dims().size() - 2])
+    if (tensor.dims(-1) != other.dims(-2))
         throw std::runtime_error("The last dimension of the first tensor must match the second to last dimension of the second tensor");
 
     auto other_T = other.transpose(other.dims().size() - 2, other.dims().size() - 1);  // Transpose the second tensor for easier multiplication
     return LinearMatMul(tensor, other_T);
 }
 
-
-template <typename DType, typename Operator>
-Tensor<DType> BasicTensorOperator(const TensorBase<DType> &tensor, const TensorBase<DType> &other, const Operator &op) 
+namespace
 {
-    // broadcast the tensors
-    TensorMap<DType> tm1 = tensor , tm2 = other;
-    if (tm1.dims().size() > tm2.dims().size())
+    template <typename DType, typename Operator>
+    Tensor<DType> BasicTensorOperator(const TensorBase<DType> &tensor, const TensorBase<DType> &other, const Operator &op) 
     {
-        tm2.broadcast(tm1.dims().size() - tm2.dims().size());
-    }
-    else if (tm1.dims().size() < tm2.dims().size()) 
-    {
-        tm1.broadcast(tm2.dims().size() - tm1.dims().size());
-    }
-    
-    std::vector<typename TensorMap<DType>::Dim> result_dims;
-    for (size_t i = 0; i < tm1.dims().size(); ++i) 
-    {
-        if (tm1.dims()[i] != tm2.dims()[i]) 
+        // broadcast the tensors
+        TensorMap<DType> tm1 = tensor , tm2 = other;
+        if (tm1.dims().size() > tm2.dims().size())
         {
-            if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
-                throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
+            tm2.broadcast(tm1.dims().size() - tm2.dims().size());
         }
-        result_dims.push_back(std::max(tm1.dims()[i], tm2.dims()[i]));
-    }
-
-    std::function<void(const TensorMap<DType>&, const TensorMap<DType>&, TensorMap<DType>&)> operator_recurse = [&op, &operator_recurse](const TensorMap<DType> &a, const TensorMap<DType> &b, TensorMap<DType> &r) {
-        if (a.dims().size() == 1)
+        else if (tm1.dims().size() < tm2.dims().size()) 
         {
-            for (typename TensorMap<DType>::Dim i = 0; i < r.dims(0); ++i) 
+            tm1.broadcast(tm2.dims().size() - tm1.dims().size());
+        }
+        
+        std::vector<typename TensorMap<DType>::Dim> result_dims;
+        for (size_t i = 0; i < tm1.dims().size(); ++i) 
+        {
+            if (tm1.dims()[i] != tm2.dims()[i]) 
             {
-                typename TensorMap<DType>::Dim a_index = i, b_index = i;
-                if (a.dims(0) == 1)
-                    a_index = 0;
-                if (b.dims(0) == 1)
-                    b_index = 0;
-                r.value(i) = op(a.value(a_index), b.value(b_index));
+                if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
+                    throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
             }
+            result_dims.push_back(std::max(tm1.dims()[i], tm2.dims()[i]));
         }
-        else
-        {
-            for (typename TensorMap<DType>::Dim i = 0; i < r.dims(0); ++i) 
-            {
-                typename TensorMap<DType>::Dim a_index = i, b_index = i;
-                if (a.dims(0) == 1)
-                    a_index = 0;
-                if (b.dims(0) == 1)
-                    b_index = 0;
-                auto am = a.map(a_index);
-                auto bm = b.map(b_index);
-                auto rm = r.map(i);
-                operator_recurse(am, bm, rm);
-            }
-        }
-    };
 
-    Tensor<DType> result(result_dims);
-    TensorMap<DType> result_map = result;
-    operator_recurse(tm1, tm2, result_map);
-    return result;
+        std::function<void(const TensorMap<DType>&, const TensorMap<DType>&, TensorMap<DType>&)> operator_recurse = [&op, &operator_recurse](const TensorMap<DType> &a, const TensorMap<DType> &b, TensorMap<DType> &r) {
+            if (a.dims().size() == 1)
+            {
+                for (typename TensorMap<DType>::Dim i = 0; i < r.dims(0); ++i) 
+                {
+                    typename TensorMap<DType>::Dim a_index = (a.dims(0) == 1) ? 0 : i;
+                    typename TensorMap<DType>::Dim b_index = (b.dims(0) == 1) ? 0 : i;
+                    r.value(i) = op(a.value(a_index), b.value(b_index));
+                }
+            }
+            else
+            {
+                for (typename TensorMap<DType>::Dim i = 0; i < r.dims(0); ++i) 
+                {
+                    typename TensorMap<DType>::Dim a_index = i, b_index = i;
+                    if (a.dims(0) == 1)
+                        a_index = 0;
+                    if (b.dims(0) == 1)
+                        b_index = 0;
+                    auto am = a.map(a_index);
+                    auto bm = b.map(b_index);
+                    auto rm = r.map(i);
+                    operator_recurse(am, bm, rm);
+                }
+            }
+        };
+
+        Tensor<DType> result(result_dims);
+        TensorMap<DType> result_map = result;
+        operator_recurse(tm1, tm2, result_map);
+        return result;
+    }
 }
 
 template <typename DType>
@@ -981,465 +873,12 @@ Tensor<DType> operator/(const TensorBase<DType> &tensor, const TensorBase<DType>
     });
 }
 
-// template <typename DType>
-// Tensor<DType> operator+(const TensorBase<DType> &tensor, const TensorBase<DType> &other) 
-// {
-//     TensorMap<DType> tm1 = tensor.numel() >= other.numel() ? tensor : other; 
-//     TensorMap<DType> tm2 = tensor.numel() < other.numel() ? tensor : other;
-
-//     // broadcast the tensors
-//     tm2.broadcast(tm1.dims().size() - tm2.dims().size());
-
-//     for (size_t i = 0; i < tm1.dims().size(); ++i) 
-//     {
-//         if (tm1.dims()[i] != tm2.dims()[i]) 
-//         {
-//             if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-
-//     Tensor<DType> result(tm1.dims());
-//     size_t tm1_offset = 0;
-//     while (tm1_offset < tm1.numel())
-//     {
-//         size_t tm2_offset = 0;
-//         while (tm2_offset < tm2.numel())
-//         {
-//             result.data()[tm1_offset + tm2_offset] = tm1.data()[tm1_offset + tm2_offset] + tm2.data()[tm2_offset];
-//             ++tm2_offset;
-//         }
-//         tm1_offset += tm2_offset;
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> operator-(const TensorBase<DType> &tensor, const TensorBase<DType> &other) 
-// {
-//     // broadcast the tensors
-//     TensorMap<DType> tm1 = tensor , tm2 = other;
-//     if (tm1.dims().size() > tm2.dims().size())
-//     {
-//         tm2.broadcast(tm1.dims().size() - tm2.dims().size());
-//     }
-//     else if (tm1.dims().size() < tm2.dims().size()) 
-//     {
-//         tm1.broadcast(tm2.dims().size() - tm1.dims().size());
-//     }
-//     for (size_t i = 0; i < tm1.dims().size(); ++i) 
-//     {
-//         if (tm1.dims()[i] != tm2.dims()[i]) 
-//         {
-//             if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-
-//     Tensor<DType> result(tm1.dims());
-//     size_t tm1_offset = 0;
-//     while (tm1_offset < tm1.numel())
-//     {
-//         size_t tm2_offset = 0;
-//         while (tm2_offset < tm2.numel())
-//         {
-//             result.data()[tm1_offset + tm2_offset] = tm1.data()[tm1_offset + tm2_offset] - tm2.data()[tm2_offset];
-//             ++tm2_offset;
-//         }
-//         tm1_offset += tm2_offset;
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> operator*(const TensorBase<DType> &tensor, const TensorBase<DType> &other) 
-// {
-//     TensorMap<DType> tm1 = tensor.numel() >= other.numel() ? tensor : other; 
-//     TensorMap<DType> tm2 = tensor.numel() < other.numel() ? tensor : other;
-
-//     // broadcast the tensors
-//     tm2.broadcast(tm1.dims().size() - tm2.dims().size());
-
-//     for (size_t i = 0; i < tm1.dims().size(); ++i) 
-//     {
-//         if (tm1.dims()[i] != tm2.dims()[i]) 
-//         {
-//             if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-
-//     Tensor<DType> result(tm1.dims());
-//     size_t tm1_offset = 0;
-//     while (tm1_offset < tm1.numel())
-//     {
-//         size_t tm2_offset = 0;
-//         while (tm2_offset < tm2.numel())
-//         {
-//             result.data()[tm1_offset + tm2_offset] = tm1.data()[tm1_offset + tm2_offset] * tm2.data()[tm2_offset];
-//             ++tm2_offset;
-//         }
-//         tm1_offset += tm2_offset;
-//     }
-//     return result;
-
-// }
-
-// template <typename DType>
-// Tensor<DType> operator/(const TensorBase<DType> &tensor, const TensorBase<DType> &other) 
-// {
-//     // broadcast the tensors
-//     TensorMap<DType> tm1 = tensor, tm2 = other;
-//     if (tm1.dims().size() > tm2.dims().size()) 
-//     {
-//         tm2.broadcast(tm1.dims().size() - tm2.dims().size());
-//     }
-//     else if (tm1.dims().size() < tm2.dims().size()) 
-//     {
-//         tm1.broadcast(tm2.dims().size() - tm1.dims().size());
-//     }
-//     for (size_t i = 0; i < tm1.dims().size(); ++i) 
-//     {
-//         if (tm1.dims()[i] != tm2.dims()[i]) 
-//         {
-//             if (tm1.dims()[i] != 1 && tm2.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-
-//     Tensor<DType> result(tm1.dims());
-//     size_t tm1_offset = 0;
-//     while (tm1_offset < tm1.numel())
-//     {
-//         size_t tm2_offset = 0;
-//         while (tm2_offset < tm2.numel())
-//         {
-//             if (tm2.data()[tm2_offset] == 0)
-//                 throw std::runtime_error("Division by zero");
-//             result.data()[tm1_offset + tm2_offset] = tm1.data()[tm1_offset + tm2_offset] / tm2.data()[tm2_offset];
-//             ++tm2_offset;
-//         }
-//         tm1_offset += tm2_offset;
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> Add1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == 1 && other.dims().size() == 1);
-
-//     Tensor<DType> result;
-//     typename Tensor<DType>::Dim result_dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     result.resize({result_dim});
-//     for (typename Tensor<DType>::Dim i = 0; i < result_dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         static_cast<DType*>(result.data())[i] = static_cast<const DType*>(tensor.data())[tensor_index] + static_cast<const DType*>(other.data())[other_index];
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> AddDFS(const TensorBase<DType> &tensor, const TensorBase<DType> &other) 
-// {
-//     assert(tensor.dims().size() == other.dims().size());
-//     if (tensor.dims().size() == 1)
-//         return Add1DTensor(tensor, other);
-
-//     Tensor<DType> result;
-//     auto dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     for (typename Tensor<DType>::Dim i = 0; i < dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         auto sub_result = AddDFS(tensor[tensor_index], other[other_index]);
-//         if (i == 0) 
-//         {
-//             auto result_dims = sub_result.dims();
-//             result_dims.insert(result_dims.begin(), std::max(tensor.dims()[0], other.dims()[0]));
-//             result.resize(result_dims);
-//         }
-//         result[i] = std::move(sub_result);
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> operator+(Tensor<DType> tensor, Tensor<DType> other) 
-// {
-//     if (tensor.dims().size() < 1 || other.dims().size() < 1) 
-//         throw std::runtime_error("Both tensors must have at least 1 dimension for addition");
-
-//     // broadcast the tensors
-//     if (tensor.dims().size() > other.dims().size()) 
-//     {
-//         other.broadcast(tensor.dims().size() - other.dims().size());
-//         // auto append = std::decay_t<decltype(tensor.dims())>(tensor.dims().size() - other.dims().size(), 1);
-//         // other.dims().insert(other.dims().begin(), append.begin(), append.end());
-//     } 
-//     else if (tensor.dims().size() < other.dims().size()) 
-//     {
-//         tensor.broadcast(other.dims().size() - tensor.dims().size());
-//         // auto append = std::decay_t<decltype(other.dims())>(other.dims().size() - tensor.dims().size(), 1);
-//         // tensor.dims().insert(tensor.dims().begin(), append.begin(), append.end());
-//     }
-//     for (size_t i = 0; i < tensor.dims().size(); ++i) 
-//     {
-//         if (tensor.dims()[i] != other.dims()[i]) 
-//         {
-//             if (tensor.dims()[i] != 1 && other.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-//     return AddDFS(tensor, other);
-// }
-
-// template <typename DType>
-// Tensor<DType> Subtract1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == 1 && other.dims().size() == 1);
-
-//     Tensor<DType> result;
-//     typename Tensor<DType>::Dim result_dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     result.resize({result_dim});
-//     for (typename Tensor<DType>::Dim i = 0; i < result_dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         static_cast<DType*>(result.data())[i] = static_cast<const DType*>(tensor.data())[tensor_index] - static_cast<const DType*>(other.data())[other_index];
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> SubtractDFS(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == other.dims().size());
-//     if (tensor.dims().size() == 1)
-//         return Subtract1DTensor(tensor, other);
-
-//     Tensor<DType> result;
-//     auto dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     for (typename Tensor<DType>::Dim i = 0; i < dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         auto sub_result = SubtractDFS(tensor[tensor_index], other[other_index]);
-//         if (i == 0) 
-//         {
-//             auto result_dims = sub_result.dims();
-//             result_dims.insert(result_dims.begin(), std::max(tensor.dims()[0], other.dims()[0]));
-//             result.resize(result_dims);
-//         }
-//         result[i] = std::move(sub_result);
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> operator-(Tensor<DType> tensor, Tensor<DType> other)
-// {
-//     if (tensor.dims().size() < 1 || other.dims().size() < 1) 
-//         throw std::runtime_error("Both tensors must have at least 1 dimension for subtraction");
-
-//     // broadcast the tensors
-//     if (tensor.dims().size() > other.dims().size()) 
-//     {
-//         auto append = decltype(tensor.dims())(tensor.dims().size() - other.dims().size(), 1);
-//         other.dims().insert(other.dims().begin(), append.begin(), append.end());
-//     } 
-//     else if (tensor.dims().size() < other.dims().size()) 
-//     {
-//         auto append = decltype(other.dims())(other.dims().size() - tensor.dims().size(), 1);
-//         tensor.dims().insert(tensor.dims().begin(), append.begin(), append.end());
-//     }
-//     for (size_t i = 0; i < tensor.dims().size(); ++i) 
-//     {
-//         if (tensor.dims()[i] != other.dims()[i]) 
-//         {
-//             if (tensor.dims()[i] != 1 && other.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-//     return SubtractDFS(tensor, other);
-// }
-
-// template <typename DType>
-// Tensor<DType> Multiply1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == 1 && other.dims().size() == 1);
-
-//     Tensor<DType> result;
-//     typename Tensor<DType>::Dim result_dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     result.resize({result_dim});
-//     for (typename Tensor<DType>::Dim i = 0; i < result_dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         static_cast<DType*>(result.data())[i] = static_cast<const DType*>(tensor.data())[tensor_index] * static_cast<const DType*>(other.data())[other_index];
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> MultiplyDFS(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == other.dims().size());
-//     if (tensor.dims().size() == 1)
-//         return Multiply1DTensor(tensor, other);
-
-//     Tensor<DType> result;
-//     auto dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     for (typename Tensor<DType>::Dim i = 0; i < dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         auto sub_result = MultiplyDFS(tensor[tensor_index], other[other_index]);
-//         if (i == 0) 
-//         {
-//             auto result_dims = sub_result.dims();
-//             result_dims.insert(result_dims.begin(), std::max(tensor.dims()[0], other.dims()[0]));
-//             result.resize(result_dims);
-//         }
-//         result[i] = std::move(sub_result);
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> operator*(Tensor<DType> tensor, Tensor<DType> other)
-// {
-//     if (tensor.dims().size() < 1 || other.dims().size() < 1) 
-//         throw std::runtime_error("Both tensors must have at least 1 dimension for multiplication");
-
-//     // broadcast the tensors
-//     if (tensor.dims().size() > other.dims().size()) 
-//     {
-//         auto append = decltype(tensor.dims())(tensor.dims().size() - other.dims().size(), 1);
-//         other.dims().insert(other.dims().begin(), append.begin(), append.end());
-//     } 
-//     else if (tensor.dims().size() < other.dims().size()) 
-//     {
-//         auto append = decltype(other.dims())(other.dims().size() - tensor.dims().size(), 1);
-//         tensor.dims().insert(tensor.dims().begin(), append.begin(), append.end());
-//     }
-//     for (size_t i = 0; i < tensor.dims().size(); ++i) 
-//     {
-//         if (tensor.dims()[i] != other.dims()[i]) 
-//         {
-//             if (tensor.dims()[i] != 1 && other.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-//     return MultiplyDFS(tensor, other);
-// }
-
-// template <typename DType>
-// Tensor<DType> Divide1DTensor(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == 1 && other.dims().size() == 1);
-
-//     Tensor<DType> result;
-//     typename Tensor<DType>::Dim result_dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     result.resize({result_dim});
-//     for (typename Tensor<DType>::Dim i = 0; i < result_dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         if (static_cast<const DType*>(other.data())[other_index] == 0)
-//             throw std::runtime_error("Cannot divide by zero");
-//         static_cast<DType*>(result.data())[i] = static_cast<const DType*>(tensor.data())[tensor_index] / static_cast<const DType*>(other.data())[other_index];
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> DivideDFS(const Tensor<DType> &tensor, const Tensor<DType> &other) 
-// {
-//     assert(tensor.dims().size() == other.dims().size());
-//     if (tensor.dims().size() == 1)
-//         return Divide1DTensor(tensor, other);
-
-//     Tensor<DType> result;
-//     auto dim = std::max(tensor.dims()[0], other.dims()[0]);
-//     for (typename Tensor<DType>::Dim i = 0; i < dim; ++i) 
-//     {
-//         typename Tensor<DType>::Dim tensor_index = i, other_index = i;
-//         if (tensor.dims()[0] == 1)
-//             tensor_index = 0;
-//         if (other.dims()[0] == 1)
-//             other_index = 0;
-//         auto sub_result = DivideDFS(tensor[tensor_index], other[other_index]);
-//         if (i == 0) 
-//         {
-//             auto result_dims = sub_result.dims();
-//             result_dims.insert(result_dims.begin(), std::max(tensor.dims()[0], other.dims()[0]));
-//             result.resize(result_dims);
-//         }
-//         result[i] = std::move(sub_result);
-//     }
-//     return result;
-// }
-
-// template <typename DType>
-// Tensor<DType> operator/(Tensor<DType> tensor, Tensor<DType> other) 
-// {
-//     if (tensor.dims().size() < 1 || other.dims().size() < 1) 
-//         throw std::runtime_error("Both tensors must have at least 1 dimension for division");
-
-//     // broadcast the tensors
-//     if (tensor.dims().size() > other.dims().size()) 
-//     {
-//         auto append = decltype(tensor.dims())(tensor.dims().size() - other.dims().size(), 1);
-//         other.dims().insert(other.dims().begin(), append.begin(), append.end());
-//     } 
-//     else if (tensor.dims().size() < other.dims().size()) 
-//     {
-//         auto append = decltype(other.dims())(other.dims().size() - tensor.dims().size(), 1);
-//         tensor.dims().insert(tensor.dims().begin(), append.begin(), append.end());
-//     }
-//     for (size_t i = 0; i < tensor.dims().size(); ++i) 
-//     {
-//         if (tensor.dims()[i] != other.dims()[i]) 
-//         {
-//             if (tensor.dims()[i] != 1 && other.dims()[i] != 1)
-//                 throw std::runtime_error("The dimensions of the tensors must match or be 1 for broadcasting");
-//         }
-//     }
-//     return DivideDFS(tensor, other);
-// }
-
 template <typename DType, typename ScalarType, 
           typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
-Tensor<DType> operator+(Tensor<DType> tensor, ScalarType scalar)
+Tensor<DType> operator+(const TensorBase<DType> &tensor, ScalarType scalar)
 {
-    if (tensor.data() == nullptr)
-        throw std::runtime_error("Cannot add a scalar to a tensor with no data");
 
-    Tensor<DType> result = tensor;
+    Tensor<DType> result(tensor);
     for (size_t i = 0; i < result.numel(); ++i) 
     {
         static_cast<DType*>(result.data())[i] += static_cast<DType>(scalar);
@@ -1449,19 +888,16 @@ Tensor<DType> operator+(Tensor<DType> tensor, ScalarType scalar)
 
 template <typename DType, typename ScalarType, 
           typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
-Tensor<DType> operator+(ScalarType scalar, Tensor<DType> tensor)
+Tensor<DType> operator+(ScalarType scalar, const TensorBase<DType> &tensor)
 {
     return tensor + scalar; // Use the existing operator+ for consistency
 }
 
-template <typename DType, typename ScalarType, 
+template <typename DType, typename ScalarType,
           typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
-Tensor<DType> operator-(Tensor<DType> tensor, ScalarType scalar)
+Tensor<DType> operator-(const TensorBase<DType> &tensor, ScalarType scalar)
 {
-    if (tensor.data() == nullptr)
-        throw std::runtime_error("Cannot subtract a scalar from a tensor with no data");
-
-    Tensor<DType> result = tensor;
+    Tensor<DType> result(tensor);
     for (size_t i = 0; i < result.numel(); ++i) 
     {
         static_cast<DType*>(result.data())[i] -= static_cast<DType>(scalar);
@@ -1471,12 +907,21 @@ Tensor<DType> operator-(Tensor<DType> tensor, ScalarType scalar)
 
 template <typename DType, typename ScalarType, 
           typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
-Tensor<DType> operator*(Tensor<DType> tensor, ScalarType scalar) 
+Tensor<DType> operator-(ScalarType scalar, const TensorBase<DType> &tensor)
 {
-    if (tensor.data() == nullptr)
-        throw std::runtime_error("Cannot multiply a tensor with no data");
-    
-    Tensor<DType> result = tensor;
+    Tensor<DType> result(tensor);
+    for (size_t i = 0; i < result.numel(); ++i) 
+    {
+        static_cast<DType*>(result.data())[i] = static_cast<DType>(scalar) - static_cast<DType*>(result.data())[i];
+    }
+    return result;
+}
+
+template <typename DType, typename ScalarType, 
+          typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
+Tensor<DType> operator*(const TensorBase<DType> &tensor, ScalarType scalar) 
+{
+    Tensor<DType> result(tensor);
     for (size_t i = 0; i < result.numel(); ++i) 
     {
         static_cast<DType*>(result.data())[i] *= static_cast<DType>(scalar);
@@ -1486,22 +931,19 @@ Tensor<DType> operator*(Tensor<DType> tensor, ScalarType scalar)
 
 template <typename DType, typename ScalarType, 
           typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
-Tensor<DType> operator*(ScalarType scalar, Tensor<DType> tensor)
+Tensor<DType> operator*(ScalarType scalar, const TensorBase<DType> &tensor)
 {
     return tensor * scalar; // Use the existing operator* for consistency
 }
 
 template <typename DType, typename ScalarType, 
           typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
-Tensor<DType> operator/(Tensor<DType> tensor, ScalarType scalar) 
+Tensor<DType> operator/(const TensorBase<DType> &tensor, ScalarType scalar) 
 {
-    if (tensor.data() == nullptr)
-        throw std::runtime_error("Cannot divide a tensor with no data");
-    
     if (scalar == 0)
         throw std::runtime_error("Cannot divide by zero");
 
-    Tensor<DType> result = tensor;
+    Tensor<DType> result(tensor);
     for (size_t i = 0; i < result.numel(); ++i) 
     {
         static_cast<DType*>(result.data())[i] /= static_cast<DType>(scalar);
@@ -1509,12 +951,19 @@ Tensor<DType> operator/(Tensor<DType> tensor, ScalarType scalar)
     return result;
 }
 
-
-// Define types for reading parameters
-using ParamKeyLen = int32_t;
-using ParamDType = int32_t;
-using ParamShapeLen = int32_t;
-using ParamShapeElement = int32_t;
+template <typename DType, typename ScalarType, 
+          typename = std::enable_if_t<std::is_convertible_v<ScalarType, DType>>>
+Tensor<DType> operator/(ScalarType scalar, const TensorBase<DType> &tensor)
+{
+    Tensor<DType> result(tensor);
+    for (size_t i = 0; i < result.numel(); ++i) 
+    {
+        if (static_cast<DType*>(result.data())[i] == 0)
+            throw std::runtime_error("Cannot divide by zero");
+        static_cast<DType*>(result.data())[i] = static_cast<DType>(scalar) / static_cast<DType*>(result.data())[i];
+    }
+    return result;
+}
 
 
 /***** Model related types *****/
@@ -1525,17 +974,14 @@ public:
     using Dim = typename Tensor<DType>::Dim;
 
     Embedding(Dim num_embeddings_, Dim embedding_dim_)
-        : weight(Tensor<DType>(num_embeddings_, embedding_dim_)) {}
+        : weight(num_embeddings_, embedding_dim_) {}
     
     template <typename Index, typename = std::enable_if_t<std::is_integral_v<Index>>>
     Tensor<DType> operator()(const Tensor<Index> &x) const
     {
-        assert(x.dims().size() > 0);
-
-        Tensor<DType> output;
         auto output_size = x.dims();
-        output_size.push_back(weight.dims()[1]);
-        output.resize(output_size);
+        output_size.push_back(weight.dims(-1));
+        Tensor<DType> output(output_size);
         size_t chunk_bytes = output_size.back() * sizeof(DType);
 
         size_t offset = 0;
@@ -1561,13 +1007,14 @@ public:
     using Dim = typename Tensor<DType>::Dim;
 
     Linear(Dim in_features_, Dim out_features_, bool bias_ = true)
-        : weight(Tensor<DType>(out_features_, in_features_)), 
+        : weight(out_features_, in_features_), 
+          bias_flag(bias_),
           bias(bias_ ? Tensor<DType>(out_features_) : Tensor<DType>()) {}
 
-    Tensor<DType> operator()(const Tensor<DType> &input) const
+    Tensor<DType> operator()(const Tensor<DType> &x) const
     {
-        Tensor<DType> output = LinearMatMul(input, weight);
-        if (bias.numel() > 0) 
+        Tensor<DType> output = LinearMatMul(x, weight);
+        if (bias_flag) 
         {
             return output + bias;
         }
@@ -1576,6 +1023,7 @@ public:
 
 public:
     Tensor<DType> weight;
+    bool bias_flag;
     Tensor<DType> bias;
 };
 
@@ -1594,7 +1042,8 @@ public:
           m_out_proj(d_out_, d_out_)
     {
         // Initialize mask for attention
-        DType *mask_data = new DType[context_length_ * context_length_];
+        m_mask = Tensor<DType>(static_cast<Dim>(context_length_), static_cast<Dim>(context_length_));
+        DType *mask_data = m_mask.data();
         for (int i = 0; i < context_length_; ++i) 
         {
             for (int j = 0; j < context_length_; ++j) 
@@ -1602,7 +1051,6 @@ public:
                 mask_data[i * context_length_ + j] = (i < j) ? 1 : 0;
             }
         }
-        m_mask = Tensor<DType>({static_cast<Dim>(context_length_), static_cast<Dim>(context_length_)}, mask_data);
     }
 
     Tensor<DType> operator()(const Tensor<DType> &x) const
@@ -1649,11 +1097,9 @@ public:
         attn_weights = attn_weights.softmax();
 
         auto context_vec = MatMul(attn_weights, values); // Shape: [batch, num_heads, num_tokens, head_dim]
-
         context_vec = context_vec.transpose(1, 2); // Shape: [batch, num_tokens, num_heads, head_dim]
-
         context_vec.view({batch, num_tokens, m_d_out}); // Shape: [batch, num_tokens, d_out]
-        return m_out_proj(context_vec); // Final projection to output dimension
+        return m_out_proj(context_vec);
     }
 
 public:
@@ -1665,7 +1111,7 @@ public:
     Linear<DType> m_W_key;
     Linear<DType> m_W_value;
     Linear<DType> m_out_proj;
-    Tensor<DType> m_mask; // Mask for attention, shape: [context_length_, context_length_]
+    Tensor<DType> m_mask;
 };
 
 
@@ -1700,10 +1146,8 @@ public:
 
     Tensor<DType> operator()(const Tensor<DType> &x) const
     {
-        // Apply first linear layer and GELU activation
         auto x1 = m_linear1(x);
         auto x2 = m_gelu(x1);
-        // Apply second linear layer
         return m_linear2(x2);
     }
 
@@ -1727,16 +1171,12 @@ public:
     Tensor<DType> operator()(const Tensor<DType> &x) const
     {
         // Compute mean and variance
-        auto mean = x, var = x;
-        mean = mean.mean(true);
-        var = var.var(true, false);
-        
-        auto tmp = var + m_eps;
-        for (size_t i = 0; i < tmp.numel(); ++i) 
+        auto mean = x.mean(true), var = x.var(true, false) + m_eps;
+        for (size_t i = 0; i < var.numel(); ++i) 
         {
-            static_cast<DType*>(tmp.data())[i] = std::sqrt(static_cast<DType*>(tmp.data())[i]);
+            static_cast<DType*>(var.data())[i] = std::sqrt(static_cast<DType*>(var.data())[i]);
         }
-        auto norm_x = (x - mean) / tmp;
+        auto norm_x = (x - mean) / var;
         return norm_x * m_scale + m_shift; // Apply scale and shift
     }
 
@@ -1795,7 +1235,7 @@ public:
           m_pos_embedding(context_length_, emb_dim_),
           m_trf_blocks(num_layers_, TransformerBlock<DType>(emb_dim_, emb_dim_, context_length_, num_heads_, qkv_bias_)),
           m_final_norm(emb_dim_),
-          m_out_head(emb_dim_, vocab_size_)
+          m_out_head(emb_dim_, vocab_size_, false)
     {
     }
 
@@ -1804,10 +1244,10 @@ public:
         // auto batch_size = in_idx.dims()[0];
         auto seq_len = in_idx.dims()[1];
         auto tok_embeds = m_tok_embedding(in_idx);
-        PosIndex *pos_indices = new PosIndex[seq_len];
+        std::vector<PosIndex> pos_indices(seq_len);
         for (Dim i = 0; i < seq_len; ++i) 
             pos_indices[i] = static_cast<PosIndex>(i);
-        auto pos_embeds = m_pos_embedding(Tensor<PosIndex>({seq_len}, pos_indices));
+        auto pos_embeds = m_pos_embedding(Tensor<PosIndex>({seq_len}, pos_indices.data()));
         auto x = tok_embeds + pos_embeds; // Add token and position embeddings
         for (const auto &block : m_trf_blocks)
         {
@@ -1826,6 +1266,12 @@ public:
     Linear<DType> m_out_head;
 };
 
+
+// Define types for reading parameters
+using ParamKeyLen = int32_t;
+using ParamDType = int32_t;
+using ParamShapeLen = int32_t;
+using ParamShapeElement = int32_t;
 
 struct TensorUnion
 {
@@ -1876,19 +1322,19 @@ std::unordered_map<std::string, TensorUnion> load_parameters(const std::string& 
         TensorUnion tensor;
         if (dtype == 1) // FLOAT_32
         { 
-            Float32* data = new Float32[data_size];
-            file.read(reinterpret_cast<char*>(data), data_size * sizeof(Float32));
+            std::vector<Float32> data(data_size);
+            file.read(reinterpret_cast<char*>(data.data()), data_size * sizeof(Float32));
             tensor.dtype = DataType::FLOAT_32;
-            tensor.tensor = new Tensor<Float32>(std::vector<size_t>(shape.begin(), shape.end()), data);
+            tensor.tensor = new Tensor<Float32>(std::vector<size_t>(shape.begin(), shape.end()), data.data());
             if (verbose)
                 print_tensor(key, *static_cast<Tensor<Float32>*>(tensor.tensor));
         } 
         else if (dtype == 2) // FLOAT_64
         {
-            Float64* data = new Float64[data_size];
-            file.read(reinterpret_cast<char*>(data), data_size * sizeof(Float64));
+            std::vector<Float64> data(data_size);
+            file.read(reinterpret_cast<char*>(data.data()), data_size * sizeof(Float64));
             tensor.dtype = DataType::FLOAT_64;
-            tensor.tensor = new Tensor<Float64>(std::vector<size_t>(shape.begin(), shape.end()), data);
+            tensor.tensor = new Tensor<Float64>(std::vector<size_t>(shape.begin(), shape.end()), data.data());
             if (verbose)
                 print_tensor(key, *static_cast<Tensor<Float64>*>(tensor.tensor));
         } 
