@@ -1053,7 +1053,7 @@ public:
         }
     }
 
-    Tensor<DType> operator()(const Tensor<DType> &x) const
+    Tensor<DType> operator()(const Tensor<DType> &x, bool use_cache) const
     {
         // Implement the forward pass of multi-head attention
         Dim batch = x.dims()[0];
@@ -1067,6 +1067,43 @@ public:
         keys.view({batch, num_tokens, m_num_heads, m_head_dim});
         queries.view({batch, num_tokens, m_num_heads, m_head_dim});
         values.view({batch, num_tokens, m_num_heads, m_head_dim});
+
+        if (use_cache)
+        {
+            if (k_cache.numel() == 1)
+            {
+                k_cache = keys;
+                v_cache = values;
+            }
+            else
+            {
+                Tensor<DType> new_k_cache(batch, k_cache.dims(1) + keys.dims(1), m_num_heads, m_head_dim);
+                Tensor<DType> new_v_cache(batch, v_cache.dims(1) + values.dims(1), m_num_heads, m_head_dim);
+                for (Dim batch_i = 0; batch_i < batch; ++batch_i)
+                {
+                    TensorMap<DType> new_k_cache_map = new_k_cache.map(batch_i);
+                    TensorMap<DType> new_v_cache_map = new_v_cache.map(batch_i);
+                    TensorMap<DType> k_cache_map = k_cache.map(batch_i);
+                    TensorMap<DType> v_cache_map = v_cache.map(batch_i);
+                    TensorMap<DType> keys_map = keys.map(batch_i);
+                    TensorMap<DType> values_map = values.map(batch_i);
+                    
+                    auto each_k_cache_size = k_cache.dims(1) * k_cache.dims(2) * k_cache.dims(3);
+                    auto each_keys_size = keys.dims(1) * keys.dims(2) * keys.dims(3);
+                    std::memcpy(new_k_cache_map.data(), k_cache_map.data(), each_k_cache_size * sizeof(DType));
+                    std::memcpy(new_k_cache_map.data() + each_k_cache_size, keys_map.data(), each_keys_size * sizeof(DType));
+
+                    auto each_v_cache_size = v_cache.dims(1) * v_cache.dims(2) * v_cache.dims(3);
+                    auto each_values_size = values.dims(1) * values.dims(2) * values.dims(3);
+                    std::memcpy(new_v_cache_map.data(), v_cache_map.data(), each_v_cache_size * sizeof(DType));
+                    std::memcpy(new_v_cache_map.data() + each_v_cache_size, values_map.data(), each_values_size * sizeof(DType));
+                }
+                k_cache = new_k_cache;
+                v_cache = new_v_cache;
+            }
+            keys = k_cache;
+            values = v_cache;
+        }
 
         keys = keys.transpose(1, 2); // Shape: [batch, num_heads, num_tokens, head_dim]
         queries = queries.transpose(1, 2); // Shape: [batch, num_heads, num_tokens, head_dim]
@@ -1112,6 +1149,10 @@ public:
     Linear<DType> m_W_value;
     Linear<DType> m_out_proj;
     Tensor<DType> m_mask;
+
+private:
+    mutable Tensor<DType> k_cache; // Cache for keys
+    mutable Tensor<DType> v_cache; // Cache for values
 };
 
 
@@ -1201,11 +1242,11 @@ public:
     {
     }
 
-    Tensor<DType> operator()(const Tensor<DType> &x) const
+    Tensor<DType> operator()(const Tensor<DType> &x, bool use_cache) const
     {
         auto short_cut = x;
         auto x1 = m_norm1(x);
-        x1 = m_att(x1);
+        x1 = m_att(x1, use_cache);
         x1 = x1 + short_cut;
 
         short_cut = x1;
@@ -1235,23 +1276,35 @@ public:
           m_pos_embedding(context_length_, emb_dim_),
           m_trf_blocks(num_layers_, TransformerBlock<DType>(emb_dim_, emb_dim_, context_length_, num_heads_, qkv_bias_)),
           m_final_norm(emb_dim_),
-          m_out_head(emb_dim_, vocab_size_, false)
+          m_out_head(emb_dim_, vocab_size_, false),
+          cur_pos(0)
     {
     }
 
-    Tensor<DType> operator()(const Tensor<TokenIndex> &in_idx) const
+    Tensor<DType> operator()(const Tensor<TokenIndex> &in_idx, bool use_cache = false) const
     {
         // auto batch_size = in_idx.dims()[0];
         auto seq_len = in_idx.dims()[1];
         auto tok_embeds = m_tok_embedding(in_idx);
-        std::vector<PosIndex> pos_indices(seq_len);
-        for (Dim i = 0; i < seq_len; ++i) 
-            pos_indices[i] = static_cast<PosIndex>(i);
+        std::vector<PosIndex> pos_indices;
+        if (use_cache)
+        {
+            pos_indices.resize(seq_len);
+            for (Dim i = 0; i < seq_len; ++i) 
+                pos_indices[i] = static_cast<PosIndex>(cur_pos + i);
+            cur_pos += seq_len;
+        }
+        else
+        {
+            pos_indices.resize(seq_len);
+            for (Dim i = 0; i < seq_len; ++i) 
+                pos_indices[i] = static_cast<PosIndex>(i);
+        }
         auto pos_embeds = m_pos_embedding(Tensor<PosIndex>({seq_len}, pos_indices.data()));
         auto x = tok_embeds + pos_embeds; // Add token and position embeddings
         for (const auto &block : m_trf_blocks)
         {
-            x = block(x); // Pass through each transformer block
+            x = block(x, use_cache); // Pass through each transformer block
         }
         x = m_final_norm(x); // Final layer normalization
         auto logits = m_out_head(x);
@@ -1264,6 +1317,9 @@ public:
     std::vector<TransformerBlock<DType>> m_trf_blocks; // List of transformer blocks
     LayerNorm<DType> m_final_norm; // Final layer normalization
     Linear<DType> m_out_head;
+
+private:
+    mutable PosIndex cur_pos;
 };
 
 

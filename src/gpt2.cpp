@@ -3,6 +3,38 @@
 #include <iostream>
 
 
+template <typename DType>
+void generate_text(std::string text, const GPTModel<DType> &gpt, bool use_cache)
+{
+    BPETokenizer tokenizer("vocab.json", "merges.txt", {"<|endoftext|>"});
+
+    auto token_ids = tokenizer.encode(text);
+
+    auto next_token_id = [&](std::vector<TokenIndex> token_ids, bool use_cache = true) -> TokenIndex {
+        auto output = gpt(Tensor<TokenIndex>({1, static_cast<typename Tensor<TokenIndex>::Dim>(token_ids.size())}, token_ids.data()), use_cache);
+        auto final_output = output.map(0).map(output.dims()[1] - 1);
+        size_t max_index = 0;
+        for (size_t i = 1; i < final_output.numel(); ++i)
+        {
+            max_index = final_output.value(max_index) > final_output.value(i) ? max_index : i;
+        }
+        return max_index;
+    };
+
+    std::cout << text << std::flush;
+    auto nt = next_token_id(token_ids, use_cache);
+    while (nt != tokenizer.token_to_id("<|endoftext|>") && token_ids.size() < 50)
+    {
+        token_ids.push_back(nt);
+        std::cout << tokenizer.decode({nt}) << std::flush;
+        if (use_cache)
+            nt = next_token_id({nt}, true);
+        else
+            nt = next_token_id(token_ids, true);
+    }
+}
+
+
 int main() 
 {
     auto params = load_parameters("gpt2-small-124M.bin");
@@ -35,32 +67,8 @@ int main()
     gpt.m_final_norm.m_shift = *static_cast<Tensor<Float32>*>(params["final_norm.shift"].tensor);
     gpt.m_out_head.weight = *static_cast<Tensor<Float32>*>(params["out_head.weight"].tensor);
 
-    BPETokenizer tokenizer("vocab.json", "merges.txt", {"<|endoftext|>"});
-
-    std::string text = "there is album";
-    auto token_ids = tokenizer.encode(text);
-
-    auto next_token_id = [&](std::vector<TokenIndex> token_ids) -> TokenIndex {
-        auto output = gpt(Tensor<TokenIndex>({1, static_cast<typename Tensor<TokenIndex>::Dim>(token_ids.size())}, token_ids.data()));
-        auto final_output = output.map(0).map(output.dims()[1] - 1);
-        size_t max_index = 0;
-        for (size_t i = 1; i < final_output.numel(); ++i)
-        {
-            max_index = final_output.value(max_index) > final_output.value(i) ? max_index : i;
-        }
-        return max_index;
-    };
-
-    std::cout << text << std::flush;
-    while (true)
-    {
-        auto nt = next_token_id(token_ids);
-        if (nt == tokenizer.token_to_id("<|endoftext|>") || token_ids.size() > 50)
-            break;
-        token_ids.push_back(nt);
-        std::cout << tokenizer.decode({nt}) << std::flush;
-    }
-    std::cout << std::endl;
+    generate_text<Float32>("On Friday,", gpt, true);
 
     return 0;
 }
+
